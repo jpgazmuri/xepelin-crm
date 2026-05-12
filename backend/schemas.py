@@ -18,6 +18,8 @@ class HealthScoreOut(BaseModel):
     summary: str
     recommended_actions: List[str]
     generated_at: datetime
+    confidence: Optional[str] = None
+    data_gaps: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
@@ -32,6 +34,9 @@ class CompanySummary(BaseModel):
     total_financed_30d: float
     operation_count: int
     health_score: Optional[HealthScoreOut]
+    credit_limit: float
+    credit_utilized: float       # calculado en el endpoint
+    credit_utilization_rate: float  # calculado en el endpoint
 
     class Config:
         from_attributes = True
@@ -75,6 +80,9 @@ class CompanyDetail(BaseModel):
     operations: List[OperationOut]
     interactions: List[InteractionOut]
     health_score: Optional[HealthScoreOut]
+    credit_limit: float
+    credit_utilized: float       # calculado en el endpoint
+    credit_utilization_rate: float  # calculado en el endpoint
 
     class Config:
         from_attributes = True

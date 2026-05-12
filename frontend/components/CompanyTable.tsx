@@ -66,7 +66,8 @@ function daysSince(dateStr: string | null): { text: string; urgent: boolean } {
 
 export default function CompanyTable({ companies }: { companies: CompanySummary[] }) {
   const router = useRouter();
-  const headers = ["Empresa", "País · Industria", "Health Score", "Última op.", "Financiado 30d", "Ops", "Estado"];
+  // const headers = ["Empresa", "País · Industria", "Health Score", "Última op.", "Financiado 30d", "Ops", "Estado"];
+  const headers = ["Empresa", "País · Industria", "Health Score", "Última op.", "Financiado 30d", "Utilización", "Ops", "Estado"];
 
   return (
     <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -119,6 +120,26 @@ export default function CompanyTable({ companies }: { companies: CompanySummary[
               <td style={{ padding: "1rem 1.25rem", fontSize: "0.875rem",
                 fontWeight: 600, color: "#0D0D2B" }}>
                 {formatAmount(c.total_financed_30d)}
+              </td>
+              <td style={{ padding: "1rem 1.25rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <div style={{
+                    width: 48, height: 4, background: "#F0F0F8",
+                    borderRadius: 2, overflow: "hidden", flexShrink: 0,
+                  }}>
+                    <div style={{
+                      height: "100%",
+                      width: `${Math.min((c.credit_utilization_rate || 0) * 100, 100)}%`,
+                      background: (c.credit_utilization_rate || 0) > 0.8 ? "#EF4444"
+                        : (c.credit_utilization_rate || 0) > 0.5 ? "#F59E0B"
+                        : "#5B4EE8",
+                      borderRadius: 2,
+                    }} />
+                  </div>
+                  <span style={{ fontSize: "0.75rem", color: "#4A4A6A", fontWeight: 500 }}>
+                    {((c.credit_utilization_rate || 0) * 100).toFixed(0)}%
+                  </span>
+                </div>
               </td>
               <td style={{ padding: "1rem 1.25rem", fontSize: "0.8rem", color: "#8888AA" }}>
                 {c.operation_count}

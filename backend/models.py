@@ -22,6 +22,7 @@ class Company(Base):
     onboarding_date = Column(Date)
     status          = Column(String, default="active")
     notes           = Column(Text, default="")
+    credit_limit = Column(Float, nullable=True, default=0.0)
 
     kam          = relationship("KAM", back_populates="companies")
     operations   = relationship("Operation", back_populates="company")
@@ -57,6 +58,8 @@ class HealthScore(Base):
     churn_risk          = Column(String)
     summary             = Column(Text)
     recommended_actions = Column(Text)
+    confidence          = Column(String, nullable=True)
+    data_gaps           = Column(Text, nullable=True)  # JSON string
     generated_at        = Column(DateTime, default=datetime.utcnow)
     company             = relationship("Company", back_populates="health_score")
 
