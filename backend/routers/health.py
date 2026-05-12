@@ -7,6 +7,7 @@ import os
 from dotenv import load_dotenv
 import models, schemas
 from database import get_db
+from datetime import date
 
 load_dotenv()
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -32,8 +33,23 @@ def build_company_prompt(company: models.Company) -> str:
     recent_ops    = [o for o in ops if (datetime.now().date() - o.operation_date).days <= 30]
     total_30d     = sum(o.amount for o in recent_ops)
     last_op       = max((o.operation_date for o in ops), default=None)
-    days_inactive = (datetime.now().date() - last_op).days if last_op else 999
+    days_inactive = (datetime.now().date() - last_op).days if last_op else 999  
     products_used = list(set(o.product_type for o in ops))
+    # Agrega estas líneas junto a los otros cálculos al inicio de la función
+    credit_limit = company.credit_limit or 0
+    # credit_utilized = sum(
+    #     o.amount for o in ops
+    #     if o.status in ["completed", "pending"]
+    #     and (datetime.now().date() - o.operation_date).days <= 90
+    # )
+    # utilization_rate = round(credit_utilized / credit_limit, 3) if credit_limit > 0 else 0.0
+    # Operaciones vigentes = completadas cuyo due_date aún no ha pasado
+    credit_utilized = sum(
+        o.amount for o in ops
+        if o.status in ["completed", "pending"]
+        and o.due_date >= date.today()
+    )
+    utilization_rate = round(credit_utilized / credit_limit, 3) if credit_limit > 0 else 0.0
 
     interaction_summaries = [
         f"- [{i.channel.upper()}] {i.interaction_date}: {i.summary}"
@@ -56,6 +72,9 @@ COMPORTAMIENTO FINANCIERO:
 - Volumen financiado últimos 30 días: ${total_30d:,.0f}
 - Días sin operar: {days_inactive}
 - Productos utilizados: {', '.join(products_used) if products_used else 'ninguno'}
+- Línea de crédito aprobada: ${credit_limit:,.0f}
+- Línea utilizada (últimos 90d): ${credit_utilized:,.0f}
+- Tasa de utilización: {utilization_rate:.1%}
 
 INTERACCIONES RECIENTES:
 {chr(10).join(interaction_summaries) if interaction_summaries else '- Sin interacciones registradas'}
@@ -110,11 +129,28 @@ def generate_health_score(company_id: int, db: Session = Depends(get_db)):
         models.HealthScore.company_id == company_id
     ).first()
 
+    # if existing:
+    #     existing.score               = data["health_score"]
+    #     existing.churn_risk          = data["churn_risk"]
+    #     existing.summary             = data["summary"]
+    #     existing.recommended_actions = json.dumps(data["recommended_actions"])
+    #     existing.generated_at        = datetime.utcnow()
+    # else:
+    #     db.add(models.HealthScore(
+    #         company_id=company_id,
+    #         score=data["health_score"],
+    #         churn_risk=data["churn_risk"],
+    #         summary=data["summary"],
+    #         recommended_actions=json.dumps(data["recommended_actions"]),
+    #         generated_at=datetime.utcnow()
+    #     ))
     if existing:
         existing.score               = data["health_score"]
         existing.churn_risk          = data["churn_risk"]
         existing.summary             = data["summary"]
         existing.recommended_actions = json.dumps(data["recommended_actions"])
+        existing.confidence          = data.get("confidence")
+        existing.data_gaps           = json.dumps(data.get("data_gaps", []))
         existing.generated_at        = datetime.utcnow()
     else:
         db.add(models.HealthScore(
@@ -123,6 +159,8 @@ def generate_health_score(company_id: int, db: Session = Depends(get_db)):
             churn_risk=data["churn_risk"],
             summary=data["summary"],
             recommended_actions=json.dumps(data["recommended_actions"]),
+            confidence=data.get("confidence"),
+            data_gaps=json.dumps(data.get("data_gaps", [])),
             generated_at=datetime.utcnow()
         ))
 
@@ -132,11 +170,20 @@ def generate_health_score(company_id: int, db: Session = Depends(get_db)):
         models.HealthScore.company_id == company_id
     ).first()
 
+    # return schemas.HealthScoreOut(
+    #     score=saved.score,
+    #     churn_risk=saved.churn_risk,
+    #     summary=saved.summary,
+    #     recommended_actions=json.loads(saved.recommended_actions),
+    #     generated_at=saved.generated_at
+    # )
     return schemas.HealthScoreOut(
         score=saved.score,
         churn_risk=saved.churn_risk,
         summary=saved.summary,
         recommended_actions=json.loads(saved.recommended_actions),
+        confidence=saved.confidence,
+        data_gaps=json.loads(saved.data_gaps) if saved.data_gaps else [],
         generated_at=saved.generated_at
     )
 

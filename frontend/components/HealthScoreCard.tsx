@@ -144,6 +144,63 @@ export default function HealthScoreCard({ companyId, initialScore }: {
             ))}
           </div>
 
+          {/* Confidence + Data gaps */}
+          {(score.confidence || (score.data_gaps && score.data_gaps.length > 0)) && (
+            <div style={{
+              display: "flex", gap: "0.75rem", marginBottom: "0.75rem",
+              flexWrap: "wrap",
+            }}>
+              {/* Confidence badge */}
+              {score.confidence && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "0.4rem",
+                  padding: "0.3rem 0.75rem",
+                  background: score.confidence === "high"
+                    ? "rgba(34,197,94,0.08)"
+                    : score.confidence === "medium"
+                    ? "rgba(245,158,11,0.08)"
+                    : "rgba(239,68,68,0.08)",
+                  borderRadius: "9999px",
+                  border: `1px solid ${
+                    score.confidence === "high" ? "rgba(34,197,94,0.2)"
+                    : score.confidence === "medium" ? "rgba(245,158,11,0.2)"
+                    : "rgba(239,68,68,0.2)"
+                  }`,
+                }}>
+                  <span style={{ fontSize: "0.65rem" }}>
+                    {score.confidence === "high" ? "●" : score.confidence === "medium" ? "◑" : "○"}
+                  </span>
+                  <span style={{
+                    fontSize: "0.7rem", fontWeight: 600,
+                    color: score.confidence === "high" ? "#22C55E"
+                      : score.confidence === "medium" ? "#F59E0B"
+                      : "#EF4444",
+                    textTransform: "uppercase", letterSpacing: "0.06em",
+                  }}>
+                    Confianza {score.confidence === "high" ? "alta"
+                      : score.confidence === "medium" ? "media" : "baja"}
+                  </span>
+                </div>
+              )}
+
+              {/* Data gaps */}
+              {score.data_gaps && score.data_gaps.length > 0 && (
+                <div style={{
+                  padding: "0.3rem 0.75rem",
+                  background: "rgba(139,139,170,0.08)",
+                  borderRadius: "9999px",
+                  border: "1px solid rgba(139,139,170,0.2)",
+                  fontSize: "0.7rem", color: "#8888AA",
+                  cursor: "pointer", position: "relative",
+                }}
+                  title={`Datos faltantes: ${score.data_gaps.join(", ")}`}
+                >
+                  ⚠ {score.data_gaps.length} dato{score.data_gaps.length > 1 ? "s" : ""} faltante{score.data_gaps.length > 1 ? "s" : ""}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Timestamp */}
           <div style={{ fontSize: "0.7rem", color: "#C0C0D8", textAlign: "right" }}>
             Generado: {new Date(score.generated_at).toLocaleString("es-CL")}

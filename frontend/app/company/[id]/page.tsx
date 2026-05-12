@@ -6,6 +6,7 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import NotesEditor from "@/components/NotesEditor";
 import HealthScoreCard from "@/components/HealthScoreCard";
+import ActivityTimeline from "@/components/ActivityTimeline";
 
 function formatAmount(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -117,7 +118,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
         />
 
         {/* Métricas */}
-        <div style={{
+        {/* <div style={{
           display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
           gap: "1rem", marginBottom: "1.5rem"
         }}>
@@ -137,10 +138,66 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
               <div style={{ fontSize: "1.5rem", fontWeight: 700 }}>{m.value}</div>
             </div>
           ))}
+        </div> */}
+        
+        {/* Métricas */}
+        <div style={{
+          display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
+          gap: "1rem", marginBottom: "1.5rem"
+        }}>
+          {[
+            { label: "Total operaciones", value: company.operations.length },
+            { label: "Volumen total",      value: formatAmount(company.operations.reduce((s, o) => s + o.amount, 0)) },
+            { label: "Ops con mora",       value: company.operations.filter(o => o.status === "overdue").length },
+          ].map(m => (
+            <div key={m.label} style={{
+              background: "white", border: "1px solid #E0E0EE",
+              borderRadius: "8px", padding: "1rem",
+              boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+            }}>
+              <div style={{ fontSize: "0.7rem", color: "#8888AA", textTransform: "uppercase",
+                letterSpacing: "0.08em", marginBottom: "0.25rem", fontWeight: 600 }}>
+                {m.label}
+              </div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#0D0D2B" }}>{m.value}</div>
+            </div>
+          ))}
+
+          {/* Línea de crédito con barra de utilización */}
+          <div style={{
+            background: "white", border: "1px solid #E0E0EE",
+            borderRadius: "8px", padding: "1rem",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+          }}>
+            <div style={{ fontSize: "0.7rem", color: "#8888AA", textTransform: "uppercase",
+              letterSpacing: "0.08em", marginBottom: "0.25rem", fontWeight: 600 }}>
+              Línea de crédito
+            </div>
+            <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#0D0D2B", marginBottom: "0.5rem" }}>
+              {formatAmount(company.credit_utilized)}
+              <span style={{ fontSize: "0.75rem", fontWeight: 400, color: "#8888AA" }}>
+                {" "}/ {formatAmount(company.credit_limit)}
+              </span>
+            </div>
+            {/* Barra de progreso */}
+            <div style={{ height: 6, background: "#F0F0F8", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{
+                height: "100%", borderRadius: 3,
+                width: `${Math.min(company.credit_utilization_rate * 100, 100)}%`,
+                background: company.credit_utilization_rate > 0.8 ? "#EF4444"
+                  : company.credit_utilization_rate > 0.5 ? "#F59E0B"
+                  : "#5B4EE8",
+                transition: "width 0.6s ease",
+              }} />
+            </div>
+            <div style={{ fontSize: "0.7rem", color: "#8888AA", marginTop: "0.3rem" }}>
+              {(company.credit_utilization_rate * 100).toFixed(0)}% utilizado (90d)
+            </div>
+          </div>
         </div>
 
         {/* Historial de operaciones */}
-        <div style={{
+        {/* <div style={{
           background: "white", border: "1px solid #e5e7eb",
           borderRadius: "10px", padding: "1.5rem", marginBottom: "1.5rem"
         }}>
@@ -186,10 +243,10 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
               ))}
             </tbody>
           </table>
-        </div>
+        </div> */}
 
         {/* Interacciones */}
-        <div style={{
+        {/* <div style={{
           background: "#FFFFFF", border: "1px solid #E0E0EE",
           borderRadius: "12px", padding: "1.5rem", marginBottom: "1.5rem",
           boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
@@ -240,7 +297,12 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
               })}
             </div>
           )}
-        </div>
+        </div> */}
+
+        <ActivityTimeline
+          operations={company.operations}
+          interactions={company.interactions}
+        />
 
         {/* Notas del KAM */}
         {/* <div style={{

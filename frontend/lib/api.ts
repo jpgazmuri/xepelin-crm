@@ -6,6 +6,8 @@ export interface HealthScore {
   summary: string;
   recommended_actions: string[];
   generated_at: string;
+  confidence?: "low" | "medium" | "high";
+  data_gaps?: string[];
 }
 
 export interface Interaction {
@@ -25,6 +27,9 @@ export interface CompanySummary {
   total_financed_30d: number;
   operation_count: number;
   health_score: HealthScore | null;
+  credit_limit: number;
+  credit_utilized: number;
+  credit_utilization_rate: number;
 }
 
 export interface CompanyDetail extends CompanySummary {
@@ -39,6 +44,7 @@ export interface Operation {
   product_type: string;
   amount: number;
   operation_date: string;
+  due_date: string;
   status: string;
 }
 

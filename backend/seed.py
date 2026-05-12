@@ -78,14 +78,35 @@ companies_data = [
 companies = []
 for cd in companies_data:
     kam = kams_by_email[cd["kam"]]
+    # c = models.Company(
+    #     name=cd["name"],
+    #     industry=cd["industry"],
+    #     country=cd["country"],
+    #     assigned_kam_id=kam.id,
+    #     onboarding_date=date.today() - timedelta(days=random.randint(60, 900)),
+    #     status=cd["status"],
+    # )
+
+    # Dentro del for cd in companies_data, al crear el Company:
+    if cd["status"] == "active" and cd["n"] > 10:
+        credit_limit = random.uniform(50_000_000, 200_000_000)
+    elif cd["status"] == "active":
+        credit_limit = random.uniform(10_000_000, 50_000_000)
+    elif cd["status"] == "at_risk":
+        credit_limit = random.uniform(5_000_000, 20_000_000)
+    else:
+        credit_limit = random.uniform(1_000_000, 5_000_000)
+
     c = models.Company(
         name=cd["name"],
         industry=cd["industry"],
         country=cd["country"],
-        assigned_kam_id=kam.id,
+        assigned_kam_id=kams_by_email[cd["kam"]].id,
         onboarding_date=date.today() - timedelta(days=random.randint(60, 900)),
         status=cd["status"],
+        credit_limit=credit_limit,
     )
+
     companies.append((c, cd))
     db.add(c)
 db.commit()
