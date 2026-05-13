@@ -51,9 +51,33 @@ def build_company_prompt(company: models.Company) -> str:
     )
     utilization_rate = round(credit_utilized / credit_limit, 3) if credit_limit > 0 else 0.0
 
+    # interaction_summaries = [
+    #     f"- [{i.channel.upper()}] {i.interaction_date}: {i.summary}"
+    #     for i in sorted(interactions, key=lambda x: x.interaction_date, reverse=True)[:5]
+    # ]
+
+    interactions_sorted = sorted(interactions, key=lambda x: x.interaction_date, reverse=True)
+
+    # Días desde última interacción
+    last_interaction_date = interactions_sorted[0].interaction_date if interactions_sorted else None
+    days_since_last_interaction = (datetime.now().date() - last_interaction_date).days if last_interaction_date else 999
+
+    # Canal más frecuente
+    from collections import Counter
+    channel_counts = Counter(i.channel for i in interactions)
+    most_used_channel = channel_counts.most_common(1)[0][0] if channel_counts else "ninguno"
+
+    # Interacciones sin respuesta consecutivas (resumen contiene "sin respuesta")
+    no_response_streak = 0
+    for i in interactions_sorted:
+        if "sin respuesta" in i.summary.lower():
+            no_response_streak += 1
+        else:
+            break
+
     interaction_summaries = [
         f"- [{i.channel.upper()}] {i.interaction_date}: {i.summary}"
-        for i in sorted(interactions, key=lambda x: x.interaction_date, reverse=True)[:5]
+        for i in interactions_sorted[:5]
     ]
 
     return f"""Evalúa la salud del siguiente cliente de Xepelin:
@@ -76,8 +100,12 @@ COMPORTAMIENTO FINANCIERO:
 - Línea utilizada (últimos 90d): ${credit_utilized:,.0f}
 - Tasa de utilización: {utilization_rate:.1%}
 
-INTERACCIONES RECIENTES:
-{chr(10).join(interaction_summaries) if interaction_summaries else '- Sin interacciones registradas'}
+INTERACCIONES:
+- Días desde último contacto: {days_since_last_interaction}
+- Canal más usado: {most_used_channel}
+- Contactos sin respuesta consecutivos: {no_response_streak}
+- Detalle últimas {len(interaction_summaries)} interacciones:
+{chr(10).join(interaction_summaries) if interaction_summaries else '  Sin interacciones registradas'}
 
 Responde con este JSON exacto:
 {{
@@ -88,6 +116,39 @@ Responde con este JSON exacto:
   "confidence": "<low|medium|high>",
   "data_gaps": ["<campo que faltó para mejor análisis>"]
 }}"""
+
+#     return f"""Evalúa la salud del siguiente cliente de Xepelin:
+
+# DATOS DE LA EMPRESA:
+# - Nombre: {company.name}
+# - Industria: {company.industry}
+# - País: {company.country}
+# - Estado actual: {company.status}
+# - Cliente desde: {company.onboarding_date}
+
+# COMPORTAMIENTO FINANCIERO:
+# - Total operaciones históricas: {total_ops}
+# - Operaciones en mora: {overdue_ops} ({round(overdue_ops/total_ops*100) if total_ops > 0 else 0}%)
+# - Volumen total financiado: ${total_amount:,.0f}
+# - Volumen financiado últimos 30 días: ${total_30d:,.0f}
+# - Días sin operar: {days_inactive}
+# - Productos utilizados: {', '.join(products_used) if products_used else 'ninguno'}
+# - Línea de crédito aprobada: ${credit_limit:,.0f}
+# - Línea utilizada (últimos 90d): ${credit_utilized:,.0f}
+# - Tasa de utilización: {utilization_rate:.1%}
+
+# INTERACCIONES RECIENTES:
+# {chr(10).join(interaction_summaries) if interaction_summaries else '- Sin interacciones registradas'}
+
+# Responde con este JSON exacto:
+# {{
+#   "health_score": <número entero 0-100>,
+#   "churn_risk": "<low|medium|high>",
+#   "summary": "<2-3 oraciones explicando el estado del cliente>",
+#   "recommended_actions": ["<acción 1>", "<acción 2>", "<acción 3>"],
+#   "confidence": "<low|medium|high>",
+#   "data_gaps": ["<campo que faltó para mejor análisis>"]
+# }}"""
 
 def parse_llm_response(text: str) -> dict:
     text = text.strip()
