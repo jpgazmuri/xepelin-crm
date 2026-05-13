@@ -24,34 +24,25 @@ xepelin-crm/
 ### Diagrama de arquitectura
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                          Browser                             │
-│                                                              │
-│   ┌──────────────────────────────────────────────────────┐   │
-│   │            Next.js Frontend (puerto 3000)            │   │
-│   │                                                      │   │
-│   │  /login            Email/pass + Google OAuth         │   │
-│   │  /                 Vista 1: Listado de cartera       │   │
-│   │  /company/[id]     Vista 2: Detalle de empresa       │   │
-│   │                                                      │   │
-│   │  proxy.ts          Protección de rutas               │   │
-│   └─────────────────────────┬────────────────────────────┘   │
-│                             │ HTTP / REST                     │
-│   ┌─────────────────────────▼────────────────────────────┐   │
-│   │            FastAPI Backend (puerto 8000)             │   │
-│   │                                                      │   │
-│   │  /auth/login               Login email/contraseña   │   │
-│   │  /auth/kam-by-email        Lookup KAM por email     │   │
-│   │  /companies/kam/{id}       Listado por KAM          │   │
-│   │  /companies/{id}           Detalle de empresa       │   │
-│   │  /notes/company/{id}       CRUD de notas            │   │
-│   │  /health/generate/{id}     Health score (1)         │   │
-│   │  /health/generate-all/{id} Health score (cartera)   │   │
-│   │                                                      │   │
-│   │  SQLAlchemy ORM + SQLite                             │   │
-│   │  Anthropic SDK → Claude Haiku 3.5                    │   │
-│   └──────────────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                           Browser                               │
+│  / Mi cartera · /company/[id] Detalle · /login Autenticación   │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+┌────────────────────────────▼────────────────────────────────────┐
+│              Frontend — Next.js 16 (Vercel)                     │
+│  proxy.ts · NextAuth · lib/api.ts · Componentes React           │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ REST / HTTP
+┌────────────────────────────▼────────────────────────────────────┐
+│              Backend — FastAPI (Railway)                         │
+│  auth.py · companies.py · notes.py · health.py · SQLite ORM    │
+└──────┬──────────────────────────────────────┬───────────────────┘
+       │                                      │
+┌──────▼──────┐                    ┌──────────▼──────────┐
+│ Google OAuth│                    │  Anthropic API       │
+│ Autenticación│                   │  Claude Haiku 3.5    │
+└─────────────┘                    └─────────────────────┘
 ```
 
 ---
@@ -64,21 +55,15 @@ xepelin-crm/
 | ORM | SQLAlchemy | Estándar de Python para ORM, fácil migración a Postgres |
 | Base de datos | SQLite | Suficiente para el prototipo, migración a Postgres es un cambio de una línea |
 | Frontend | Next.js 16 + TypeScript | Sugerido en el enunciado, App Router para server components |
-| Auth | NextAuth + Google OAuth + Credentials | Doble método de login; Google OAuth para cuentas corporativas, email/pass para demo |
-| Estilos | CSS-in-JS inline + globals.css | Sin dependencia de Mantine para mayor control del lenguaje visual |
+| Auth | NextAuth + Google OAuth + Credentials | Doble método: Google OAuth para cuentas corporativas, email/pass para demo |
+| Estilos | CSS-in-JS inline + globals.css | Control total del lenguaje visual de Xepelin sin overhead de Mantine |
 | LLM | Claude Haiku 3.5 (Anthropic) | ~$0.0003/empresa, output JSON estructurado confiable, SDK maduro en Python |
 
 ---
 
 ## Autenticación
 
-El sistema soporta dos métodos de login:
-
-### Email + contraseña
-El frontend envía las credenciales al backend (`/auth/login`), que verifica el hash bcrypt contra la DB. Si es correcto, NextAuth crea la sesión con el `kamId` del KAM.
-
-### Google OAuth
-Google autentica al usuario y devuelve el email. NextAuth consulta el backend (`/auth/kam-by-email`) para verificar si ese email existe como KAM en la DB. Si existe, crea la sesión con el `kamId` correspondiente. Si no existe, redirige a `/login?error=not_authorized`.
+Dos métodos de login:
 
 ```
 Email/pass  → backend /auth/login        → verifica bcrypt → sesión con kamId
@@ -99,7 +84,7 @@ kams
 companies
   id, name, industry, country
   assigned_kam_id → kams.id
-  onboarding_date, status
+  onboarding_date, status, credit_limit
 
 operations
   id, company_id → companies.id
@@ -116,77 +101,54 @@ notes
 health_scores
   id, company_id → companies.id (unique)
   score (0-100), churn_risk, summary
-  recommended_actions (JSON string)
-  confidence, data_gaps
+  recommended_actions (JSON), confidence, data_gaps (JSON)
   generated_at
 ```
 
 ---
 
-## Decisiones de producto
+## Funcionalidades principales
 
-### ¿Qué mostrar en el listado?
-El criterio fue: **¿qué necesita saber un KAM en 3 segundos por empresa?**
-- Health Score con progress circle y color semántico → prioridad visual inmediata
-- Última operación → detectar inactividad (señal temprana de churn)
-- Financiado 30d → tendencia de monetización
-- Estado (activo / en riesgo / churned) → acción requerida
+### Vista 1 — Mi Cartera
+- **Resumen global**: volumen 30d/total, mora %, utilización crédito, health score promedio, activas/at_risk/churned, empresas sin actividad 30d
+- **Filtros**: por status, país, industria y búsqueda por nombre
+- **Tabla**: empresa, health score (progress circle), última op., financiado 30d, tendencia 30d, utilización línea, ops totales, estado
+- **Ordenamiento**: at_risk primero → health score ascendente
+- **Botón regenerar scores**: actualiza todos los health scores del KAM con IA
 
-### ¿Por qué ordenar por at_risk primero?
-Un KAM con 50 empresas necesita saber dónde poner atención hoy. Las empresas en riesgo van arriba, luego ordenadas por health score ascendente.
+### Vista 2 — Detalle de empresa
+- **Header**: nombre, país, industria, onboarding, estado
+- **Health Score Card**: progress circle SVG, churn risk, resumen IA, acciones recomendadas, badge de confianza, datos faltantes con tooltip, botón regenerar
+- **Métricas**: total ops, volumen total, ops en mora, tendencia 30d
+- **Línea de crédito**: monto utilizado / aprobado con barra de progreso coloreada
+- **Timeline de actividad**: operaciones e interacciones unificadas cronológicamente
+- **Notas del KAM**: chat-style con avatar, crear/editar/eliminar, timestamp relativo
 
-### ¿Por qué notas tipo chat?
-El modelo de "una nota editable" no refleja cómo trabajan los KAMs en la práctica. Un historial de notas timestampeadas con autor permite auditar qué se dijo y cuándo.
-
-### ¿Por qué health_scores en tabla propia?
-El health score es un output de IA, no un atributo de la empresa. Separarlo permite regenerarlo sin tocar los datos base y en el futuro mantener historial de scores.
-
-### ¿Por qué SQLite y no Postgres?
-SQLite elimina la dependencia de infraestructura para el prototipo. La migración es cambiar una línea en `database.py`:
-```python
-SQLALCHEMY_DATABASE_URL = "postgresql://user:pass@host/db"
-```
-
----
-
-## AI for Growth — Health Score
-
-El sistema usa **Claude Haiku 3.5** para generar un health score por empresa basado en comportamiento financiero e interacciones recientes.
-
-Output estructurado y validado:
+### AI — Health Score
+Output estructurado por empresa:
 ```json
 {
   "health_score": 42,
   "churn_risk": "high",
   "summary": "...",
-  "recommended_actions": ["acción 1", "acción 2", "acción 3"],
+  "recommended_actions": ["...", "...", "..."],
   "confidence": "medium",
   "data_gaps": ["historial de pagos completo"]
 }
 ```
 
-### Costo estimado a escala
-
-| Escala | Costo mensual |
-|---|---|
-| 20 empresas (demo) | < $0.01 |
-| 1.000 empresas | ~$0.90 |
-| 10.000 empresas | ~$18.40 |
-
 ---
 
 ## Datos sintéticos
 
-El seed genera 4 KAMs y 32 empresas distribuidas:
+| KAM | Email | País | Empresas |
+|---|---|---|---|
+| Valentina Rojas | v.rojas@xepelin.com | CL | 10 |
+| Andrés Fuentes | a.fuentes@xepelin.com | MX | 10 |
+| Camila Torres | c.torres@xepelin.com | CL | 5 |
+| JP Gazmuri | jpgazmuric@gmail.com | CL | 7 |
 
-| KAM | Email | Empresas |
-|---|---|---|
-| Valentina Rojas | v.rojas@xepelin.com | 10 (CL) |
-| Andrés Fuentes | a.fuentes@xepelin.com | 10 (MX) |
-| Camila Torres | c.torres@xepelin.com | 5 (CL) |
-| JP Gazmuri | jpgazmuric@gmail.com | 7 (CL) |
-
-Credenciales para login con email/contraseña:
+Credenciales:
 ```
 v.rojas@xepelin.com    / xepelin123
 a.fuentes@xepelin.com  / xepelin123
@@ -196,65 +158,49 @@ jpgazmuric@gmail.com   → OAuth (Google)
 
 ---
 
-## Qué se dejó fuera y por qué
-
-| Feature | Decisión | Justificación |
-|---|---|---|
-| Tests unitarios | No incluidos | Se priorizó ship velocity |
-| Paginación | Límite implícito por KAM | Suficiente para el prototipo |
-| Postgres | SQLite | Un cambio de línea para migrar |
-| Batch processing nocturno para IA | Generación manual | En producción: job nocturno que regenera solo empresas con actividad reciente |
-| Historial de health scores | Un score por empresa | En producción: tabla health_score_history para ver evolución |
-
----
-
-## Cómo levantar el proyecto completo
+## Cómo levantar el proyecto
 
 ```bash
-# 1. Entrar al directorio
-cd xepelin-crm
-
-# 2. Backend
+# Backend
 cd backend
 python3 -m venv venv && source venv/bin/activate
 pip install fastapi uvicorn sqlalchemy pydantic python-dotenv anthropic bcrypt
 python3 seed.py
 uvicorn main:app --reload --port 8000
 
-# 3. Frontend (nueva terminal)
+# Frontend (nueva terminal)
 cd frontend
 yarn install
 yarn dev
 ```
 
-La app estará disponible en `http://localhost:3000`.
-La documentación de la API en `http://localhost:8000/docs`.
+App: `http://localhost:3000` · API docs: `http://localhost:8000/docs`
 
 ---
 
-## Variables de entorno requeridas
+## Variables de entorno
 
 ```bash
 # frontend/.env.local
 NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=<genera con: openssl rand -base64 32>
-GOOGLE_CLIENT_ID=<desde Google Cloud Console>
-GOOGLE_CLIENT_SECRET=<desde Google Cloud Console>
+NEXTAUTH_SECRET=<openssl rand -base64 32>
+GOOGLE_CLIENT_ID=<Google Cloud Console>
+GOOGLE_CLIENT_SECRET=<Google Cloud Console>
 NEXT_PUBLIC_API_URL=http://localhost:8000
 
 # backend/.env
-ANTHROPIC_API_KEY=<desde console.anthropic.com>
+ANTHROPIC_API_KEY=<console.anthropic.com>
 ```
 
 ---
 
 ## Partes del caso
 
-| Parte | Estado | Descripción |
-|---|---|---|
-| Parte 1 — Build | ✅ Completo | CRM con API + frontend + OAuth + email/pass + DB + notas tipo chat |
-| Parte 2 — AI for Growth | ✅ Completo | Health Score con Claude Haiku integrado al CRM |
-| Parte 3 — Strategy | ✅ Completo | Roadmap 4 meses + defensa ejecutiva |
+| Parte | Estado |
+|---|---|
+| Parte 1 — Build | ✅ CRM completo con API + frontend + OAuth + email/pass + DB |
+| Parte 2 — AI for Growth | ✅ Health Score con Claude Haiku, confidence, data_gaps |
+| Parte 3 — Strategy | ✅ Roadmap 4 meses + defensa ejecutiva |
 
 ---
 

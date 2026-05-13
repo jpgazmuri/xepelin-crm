@@ -10,8 +10,8 @@
 |---|---|---|
 | Next.js | 16.2+ | Framework React con App Router |
 | TypeScript | 5.0+ | Tipado estático |
-| NextAuth | 4.x | Autenticación — Google OAuth + email/contraseña |
-| Inter (Google Fonts) | — | Tipografía (alineada con Xepelin) |
+| NextAuth | 4.x | Google OAuth + email/contraseña |
+| Inter (Google Fonts) | — | Tipografía alineada con Xepelin |
 
 ---
 
@@ -23,36 +23,32 @@ frontend/
 │   ├── layout.tsx                        Layout global, SessionProvider
 │   ├── globals.css                       Variables CSS, reset, tipografía
 │   ├── page.tsx                          Vista 1: Listado de cartera
-│   ├── SessionProvider.tsx               Wrapper client-side para NextAuth
-│   ├── login/
-│   │   └── page.tsx                      Login: email/pass + Google OAuth
-│   ├── company/
-│   │   └── [id]/
-│   │       └── page.tsx                  Vista 2: Detalle de empresa
-│   └── api/
-│       └── auth/
-│           └── [...nextauth]/
-│               ├── options.ts            Config NextAuth (exportada para getServerSession)
-│               └── route.ts             Handler NextAuth
+│   ├── SessionProvider.tsx               Wrapper client-side NextAuth
+│   ├── login/page.tsx                    Login: email/pass + Google OAuth
+│   ├── company/[id]/page.tsx             Vista 2: Detalle de empresa
+│   └── api/auth/[...nextauth]/
+│       ├── options.ts                    Config NextAuth (exportada para getServerSession)
+│       └── route.ts                      Handler NextAuth
 ├── components/
-│   ├── Navbar.tsx                        Navbar compartido, logo Xepelin
-│   ├── CompanyTable.tsx                  Tabla con progress circles de health score
-│   ├── HealthScoreCard.tsx               Card interactiva de health score con IA
-│   ├── NotesEditor.tsx                   Editor de notas tipo chat con avatares
+│   ├── Navbar.tsx                        Navbar con logo Xepelin, badge CRM
+│   ├── CompanyTable.tsx                  Tabla con filtros integrados
+│   ├── CompanyFilters.tsx                Filtros: status, país, industria, búsqueda
+│   ├── CarteraSummary.tsx                Resumen global de cartera (2 filas)
+│   ├── HealthScoreCard.tsx               Card con progress circle, confianza, data gaps
+│   ├── ActivityTimeline.tsx              Timeline unificado ops + interacciones
+│   ├── NotesEditor.tsx                   Editor notas tipo chat con avatares
 │   ├── RefreshScoresButton.tsx           Regenerar todos los scores del KAM
 │   └── SignOutButton.tsx                 Cierre de sesión
-├── lib/
-│   └── api.ts                            Funciones de fetching al backend
-├── public/
-│   └── logo-xepelin.png                  Logo oficial de Xepelin
+├── lib/api.ts                            Todas las funciones de fetching
+├── public/logo-xepelin.png               Logo oficial Xepelin
 ├── proxy.ts                              Protección de rutas (Next.js 16)
 ├── next.config.ts                        images: { unoptimized: true }
-└── .env.local                            Variables de entorno (no commitear)
+└── .env.local                            Variables de entorno
 ```
 
 ---
 
-## Instalación y setup
+## Setup
 
 ```bash
 cd frontend
@@ -60,7 +56,7 @@ yarn install
 yarn dev
 ```
 
-La app estará disponible en `http://localhost:3000`.
+App: `http://localhost:3000`
 
 ---
 
@@ -68,48 +64,36 @@ La app estará disponible en `http://localhost:3000`.
 
 ```bash
 NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=<genera con: openssl rand -base64 32>
-GOOGLE_CLIENT_ID=<desde Google Cloud Console>
-GOOGLE_CLIENT_SECRET=<desde Google Cloud Console>
+NEXTAUTH_SECRET=<openssl rand -base64 32>
+GOOGLE_CLIENT_ID=<Google Cloud Console>
+GOOGLE_CLIENT_SECRET=<Google Cloud Console>
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-### Configurar Google OAuth
-
-1. [console.cloud.google.com](https://console.cloud.google.com) → nuevo proyecto
-2. **APIs & Services → Credentials → OAuth 2.0 Client ID**
-3. Authorized redirect URIs:
+### Google OAuth
+1. [console.cloud.google.com](https://console.cloud.google.com) → OAuth 2.0 Client ID
+2. Authorized redirect URIs:
    ```
    http://localhost:3000/api/auth/callback/google
-   https://tu-dominio.vercel.app/api/auth/callback/google
+   https://xepelin-crm.vercel.app/api/auth/callback/google
    ```
 
 ---
 
 ## Autenticación
 
-### Dos métodos de login
+### Flujos
 
-**Email + contraseña:**
 ```
-Usuario ingresa email/pass → NextAuth CredentialsProvider
-→ POST /auth/login al backend
-→ backend verifica bcrypt
-→ OK → sesión con kamId
-→ Error → mensaje "Email o contraseña incorrectos"
+Email/pass  → NextAuth CredentialsProvider → POST /auth/login → bcrypt → OK
+Google OAuth → Google autentica → jwt callback → GET /auth/kam-by-email
+            → existe en DB  → sesión con kamId
+            → no existe     → /login?error=not_authorized
 ```
 
-**Google OAuth:**
-```
-Usuario hace clic en "Continuar con Google" → Google autentica
-→ NextAuth callback jwt → GET /auth/kam-by-email?email=...
-→ email existe en DB → sesión con kamId correcto
-→ email no existe → redirect /login?error=not_authorized
-```
+### Por qué `authOptions` en archivo separado
 
-### Por qué `authOptions` está en archivo separado
-
-`getServerSession()` en server components requiere recibir la config de NextAuth como argumento para poder leer los callbacks JWT y obtener el `kamId`. Por eso `options.ts` está separado de `route.ts` y se importa en cada server component:
+`getServerSession()` requiere recibir la config como argumento para leer los callbacks JWT. Por eso `options.ts` está separado de `route.ts`:
 
 ```typescript
 // app/page.tsx
@@ -125,90 +109,108 @@ const session = await getServerSession(authOptions);
 
 ## Vistas
 
-### Vista 1 — Listado de cartera (`/`)
+### Vista 1 — Mi Cartera (`/`)
 
-- **Stats row**: Activas / En riesgo / Churned
-- **Botón "↻ Actualizar scores"**: regenera todos los health scores del KAM
-- **Tabla**: empresa, país/industria, health score (progress circle SVG), última op., financiado 30d, ops, estado
-- **Ordenamiento**: at_risk → health score ascendente → activas → churned
-- **Click en fila**: navega al detalle
+**Resumen global** (`CarteraSummary`):
+- Fila 1 (5 cards): volumen 30d, volumen total, mora %, utilización crédito, health score promedio
+- Fila 2 (4 cards): activas, en riesgo, churned, sin actividad 30d
 
-### Vista 2 — Detalle de empresa (`/company/[id]`)
+**Filtros** (`CompanyFilters`):
+- Búsqueda por nombre
+- Dropdown: status, país, industria
+- Contador de resultados + botón limpiar filtros
 
-- **Header**: nombre, país, industria, onboarding, badge de estado
-- **HealthScoreCard**: progress circle, churn risk, resumen IA, acciones, botón regenerar
-- **Métricas**: total ops, volumen total, ops con mora
-- **Historial de operaciones**: producto, monto, fecha, estado
-- **Historial de interacciones**: badges por canal + resumen + fecha
-- **Notas del KAM**: chat-style con avatar, crear/editar/eliminar, timestamp relativo
+**Tabla** (`CompanyTable`):
+- Columnas: empresa, país/industria, health score (progress circle SVG), última op., financiado 30d, tendencia 30d, utilización, ops, estado
+- Ordenamiento: at_risk → health score asc → activas → churned
+
+### Vista 2 — Detalle (`/company/[id]`)
+
+- **Header**: nombre, país, industria, onboarding, badge estado
+- **HealthScoreCard**: progress circle, resumen IA, acciones, badge confianza, tooltip data gaps, botón regenerar con manejo de error
+- **Métricas** (4 cards): total ops, volumen total, ops mora, tendencia 30d
+- **Línea de crédito**: barra progreso coloreada (azul/amarillo/rojo según utilización)
+- **ActivityTimeline**: ops e interacciones unificadas cronológicamente con íconos por tipo
+- **NotesEditor**: chat-style, auto-resize, envío ⌘↵, timestamps UTC correctos
 
 ---
 
 ## Componentes principales
 
+### `CarteraSummary`
+- 2 filas de métricas agregadas de la cartera completa
+- Colores semánticos por umbral (mora > 15% → rojo, etc.)
+- Datos vienen del endpoint `/companies/kam/{id}/summary`
+
+### `CompanyFilters`
+- State interno con `useState`
+- Filtrado client-side sobre el array de empresas
+- Opciones dinámicas generadas desde los valores únicos del dataset
+- Botón "Limpiar filtros" visible solo cuando hay filtros activos
+
 ### `HealthScoreCard`
 - Progress circle SVG con arco proporcional al score
-- Estado local — actualiza sin recargar la página
-- Colores semánticos: verde (low) / amarillo (medium) / rojo (high)
-- Botón "Generar" si no hay score, "↻ Regenerar" si existe
+- Badge de confianza: `low/medium/high` con colores semánticos
+- Tooltip de datos faltantes (`data_gaps`) al hacer hover
+- Estado de error visible si el LLM falla
+
+### `ActivityTimeline`
+- Combina `Operation[]` e `Interaction[]` en un array unificado
+- Ordenado por fecha descendente
+- Línea vertical con dots de color por tipo de evento
+- Badges por canal de interacción (WhatsApp/Email/Llamada)
 
 ### `NotesEditor`
 - Input con auto-resize via `useRef`
-- Envío con botón (aparece al escribir) o `⌘↵`
-- Avatar con iniciales del usuario autenticado via `useSession`
-- Timestamps en UTC con sufijo "Z" forzado para evitar drift
-
-### `CompanyTable`
-- Progress circle SVG para health score en el listado
-- Formateo de montos (K/M) y días desde última op.
-- Color rojo en "última op." si > 30 días
-
-### `RefreshScoresButton`
-- Llama a `/health/generate-all/{kamId}`
-- Estado "✓ Actualizado" por 1.5s, luego `router.refresh()`
+- Avatar con iniciales del usuario autenticado
+- Timestamps con sufijo "Z" forzado para UTC correcto
+- Botón "Enviar" aparece solo al escribir
 
 ---
 
 ## Paleta de colores
 
 ```css
---bg-base:    #F0F0F8;   /* Fondo lavanda suave */
---bg-card:    #FFFFFF;   /* Cards */
---text-primary:   #0D0D2B;   /* Títulos */
---text-muted:     #8888AA;   /* Labels */
+--bg-base:    #F0F0F8;   /* Lavanda suave */
+--bg-card:    #FFFFFF;
+--text-primary:   #0D0D2B;
+--text-muted:     #8888AA;
 --purple:         #5B4EE8;   /* CTA, highlights */
---green:    #22C55E;   /* Activo / low risk */
+--green:    #22C55E;   /* Activo / low risk / tendencia positiva */
 --yellow:   #F59E0B;   /* En riesgo / medium */
---red:      #EF4444;   /* Churned / high risk */
+--red:      #EF4444;   /* Churned / high risk / tendencia negativa */
 ```
 
 ---
 
 ## Decisiones técnicas
 
-**¿Por qué CSS inline?** Control total sobre el lenguaje visual de Xepelin sin overhead de Mantine.
+**CSS inline vs Mantine**: control total del lenguaje visual de Xepelin sin overhead de librería.
 
-**¿Por qué App Router + server components?** Fetch al backend directo en el servidor, sin exponer la API URL al cliente. Solo son `"use client"` los componentes interactivos.
+**App Router + server components**: fetch al backend en el servidor, sin exponer URL al cliente. Solo `"use client"` para componentes interactivos.
 
-**¿Por qué `proxy.ts`?** Next.js 16 deprecó `middleware.ts`. El matcher excluye `/login`, `/api/auth/*`, assets estáticos y `logo-xepelin.png`.
+**proxy.ts**: Next.js 16 deprecó `middleware.ts`. El matcher excluye `/login`, `/api/auth/*`, assets y `logo-xepelin.png`.
 
-**¿Por qué `<img>` nativo para el logo?** `<Image>` de Next.js fallaba en `/login` porque el proxy bloqueaba el asset antes de autenticar. Con `<img>` nativo y la ruta en el matcher del proxy se resuelve sin overhead.
+**`<img>` nativo para el logo**: `<Image>` de Next.js fallaba en `/login` porque el proxy bloqueaba el asset antes de autenticar.
 
-**¿Por qué progress circle SVG?** Comunica el score visualmente — el KAM entiende 20/100 vs 80/100 de un vistazo sin leer el número.
+**Progress circle SVG**: comunica el score visualmente — el KAM entiende 20/100 vs 80/100 de un vistazo.
+
+**ActivityTimeline unificado**: el KAM necesita ver la historia completa del cliente en orden cronológico, no en silos separados de ops e interacciones.
+
+**Filtros client-side**: con carteras de 10-50 empresas, filtrar en el frontend es instantáneo y evita round-trips al servidor.
 
 ---
 
 ## Deploy (Vercel)
 
 ```bash
-npm install -g vercel
-cd frontend && vercel
-
-# Variables en Vercel dashboard:
-# NEXTAUTH_URL, NEXTAUTH_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, NEXT_PUBLIC_API_URL
+vercel
+# Variables: NEXTAUTH_URL, NEXTAUTH_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, NEXT_PUBLIC_API_URL
 ```
 
-Agregar en Google Cloud Console → Authorized redirect URIs:
+URL actual: `https://xepelin-crm.vercel.app`
+
+Agregar en Google Cloud Console:
 ```
-https://tu-app.vercel.app/api/auth/callback/google
+https://xepelin-crm.vercel.app/api/auth/callback/google
 ```
