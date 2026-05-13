@@ -1,12 +1,13 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "./api/auth/[...nextauth]/options";
-import { getCompaniesByKam } from "@/lib/api";
 import CompanyTable from "@/components/CompanyTable";
 import SignOutButton from "@/components/SignOutButton";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import RefreshScoresButton from "@/components/RefreshScoresButton";
+import CarteraSummary from "@/components/CarteraSummary";
+import { getCompaniesByKam, getKamSummary } from "@/lib/api";
 
 export default async function HomePage() {
   const session = await getServerSession(authOptions);
@@ -22,7 +23,11 @@ export default async function HomePage() {
 
   // Si no hay kamId todavía, usar 1 como fallback mientras se propaga el token
   const resolvedKamId = kamId ?? 1;
-  const companies = await getCompaniesByKam(resolvedKamId);
+  // const companies = await getCompaniesByKam(resolvedKamId);
+  const [companies, summary] = await Promise.all([
+    getCompaniesByKam(kamId),
+    getKamSummary(kamId),
+  ]);
 
   const atRisk  = companies.filter(c => c.status === "at_risk").length;
   const churned = companies.filter(c => c.status === "churned").length;
@@ -52,8 +57,11 @@ export default async function HomePage() {
           <RefreshScoresButton kamId={kamId} />
         </div>
 
+        {/* Resumen global */}
+        <CarteraSummary summary={summary} />
+
         {/* Stats */}
-        <div style={{
+        {/* <div style={{
           display: "grid", gridTemplateColumns: "repeat(3, 1fr)",
           gap: "1rem", marginBottom: "1.75rem"
         }}>
@@ -79,7 +87,7 @@ export default async function HomePage() {
               </div>
             </div>
           ))}
-        </div>
+        </div> */}
 
         {/* Tabla */}
         <div style={{

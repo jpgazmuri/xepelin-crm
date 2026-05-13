@@ -124,3 +124,26 @@ export async function generateAllHealthScores(kamId: number): Promise<void> {
   });
   if (!res.ok) throw new Error("Error generando health scores");
 }
+
+export interface KamSummary {
+  total_empresas: number;
+  activas: number;
+  at_risk: number;
+  churned: number;
+  vol_30d: number;
+  vol_90d: number;
+  vol_total: number;
+  mora_rate: number;
+  vol_en_mora: number;
+  total_credit_limit: number;
+  credit_utilization: number;
+  avg_health_score: number | null;
+  empresas_sin_score: number;
+  inactivas_30d: number;
+}
+
+export async function getKamSummary(kamId: number): Promise<KamSummary> {
+  const res = await fetch(`${API_URL}/companies/kam/${kamId}/summary`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Error cargando resumen");
+  return res.json();
+}
