@@ -20,18 +20,32 @@ export default function HealthScoreCard({ companyId, initialScore }: {
 }) {
   const [score, setScore]       = useState<HealthScore | null>(initialScore);
   const [loading, setLoading]   = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleGenerate() {
     setLoading(true);
+    setError(null);
     try {
       const newScore = await generateHealthScore(companyId);
       setScore(newScore);
     } catch (e) {
-      console.error(e);
+      setError("No se pudo generar el score. Intenta de nuevo.");
     } finally {
       setLoading(false);
     }
   }
+
+  // async function handleGenerate() {
+  //   setLoading(true);
+  //   try {
+  //     const newScore = await generateHealthScore(companyId);
+  //     setScore(newScore);
+  //   } catch (e) {
+  //     console.error(e);
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // }
 
   const color = score ? churnColors[score.churn_risk] : "#C0C0D8";
 
@@ -206,6 +220,23 @@ export default function HealthScoreCard({ companyId, initialScore }: {
             Generado: {new Date(score.generated_at).toLocaleString("es-CL")}
           </div>
         </>
+      )}
+
+      {error && (
+        <div style={{
+          marginTop: "0.75rem",
+          padding: "0.6rem 0.875rem",
+          background: "rgba(239,68,68,0.08)",
+          border: "1px solid rgba(239,68,68,0.2)",
+          borderRadius: "8px",
+          fontSize: "0.8rem",
+          color: "#EF4444",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+        }}>
+          ⚠ {error}
+        </div>
       )}
     </div>
   );
