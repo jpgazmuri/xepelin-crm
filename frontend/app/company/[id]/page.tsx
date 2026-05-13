@@ -142,13 +142,21 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
         
         {/* Métricas */}
         <div style={{
-          display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
+          display: "grid", gridTemplateColumns: "repeat(5, 1fr)",
           gap: "1rem", marginBottom: "1.5rem"
         }}>
           {[
             { label: "Total operaciones", value: company.operations.length },
             { label: "Volumen total",      value: formatAmount(company.operations.reduce((s, o) => s + o.amount, 0)) },
             { label: "Ops con mora",       value: company.operations.filter(o => o.status === "overdue").length },
+            {
+              label: "Tendencia 30d",
+              value: company.trend_pct === 0 ? "—"
+                : `${company.trend_pct > 0 ? "↑" : "↓"} ${Math.abs(company.trend_pct).toFixed(0)}%`,
+              color: company.trend_pct > 0 ? "#22C55E"
+                : company.trend_pct < 0 ? "#EF4444"
+                : "#8888AA",
+            },
           ].map(m => (
             <div key={m.label} style={{
               background: "white", border: "1px solid #E0E0EE",

@@ -81,7 +81,8 @@ export default function CompanyTable({ companies }: { companies: CompanySummary[
     return true;
   });
 
-  const headers = ["Empresa", "País · Industria", "Health Score", "Última op.", "Financiado 30d", "Utilización", "Ops", "Estado"];
+  // const headers = ["Empresa", "País · Industria", "Health Score", "Última op.", "Financiado 30d", "Utilización", "Ops", "Estado"];
+  const headers = ["Empresa", "País · Industria", "Health Score", "Última op.", "Financiado 30d", "Tendencia", "Utilización", "Ops", "Estado"];
 
   return (
     <>
@@ -152,6 +153,18 @@ export default function CompanyTable({ companies }: { companies: CompanySummary[
                   <td style={{ padding: "1rem 1.25rem", fontSize: "0.875rem",
                     fontWeight: 600, color: "#0D0D2B" }}>
                     {formatAmount(c.total_financed_30d)}
+                  </td>
+                  <td style={{ padding: "1rem 1.25rem" }}>
+                    {c.trend_pct === 0 ? (
+                      <span style={{ fontSize: "0.75rem", color: "#C0C0D8" }}>—</span>
+                    ) : (
+                      <span style={{
+                        fontSize: "0.8rem", fontWeight: 700,
+                        color: c.trend_pct > 0 ? "#22C55E" : "#EF4444",
+                      }}>
+                        {c.trend_pct > 0 ? "↑" : "↓"} {Math.abs(c.trend_pct).toFixed(0)}%
+                      </span>
+                    )}
                   </td>
                   <td style={{ padding: "1rem 1.25rem" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>

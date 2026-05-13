@@ -37,6 +37,7 @@ class CompanySummary(BaseModel):
     credit_limit: float
     credit_utilized: float       # calculado en el endpoint
     credit_utilization_rate: float  # calculado en el endpoint
+    trend_pct: float = 0.0
 
     class Config:
         from_attributes = True
@@ -83,6 +84,7 @@ class CompanyDetail(BaseModel):
     credit_limit: float
     credit_utilized: float       # calculado en el endpoint
     credit_utilization_rate: float  # calculado en el endpoint
+    trend_pct: float = 0.0
 
     class Config:
         from_attributes = True
