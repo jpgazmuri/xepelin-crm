@@ -1,6 +1,8 @@
 "use client";
 import { CompanySummary } from "@/lib/api";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+import CompanyFilters from "./CompanyFilters";
 
 const churnColors: Record<string, string> = {
   low:    "#22C55E",
@@ -66,98 +68,130 @@ function daysSince(dateStr: string | null): { text: string; urgent: boolean } {
 
 export default function CompanyTable({ companies }: { companies: CompanySummary[] }) {
   const router = useRouter();
-  // const headers = ["Empresa", "País · Industria", "Health Score", "Última op.", "Financiado 30d", "Ops", "Estado"];
+
+  const [filters, setFilters] = useState({
+    status: "", country: "", industry: "", search: "",
+  });
+
+  const filtered = companies.filter(c => {
+    if (filters.status   && c.status   !== filters.status)   return false;
+    if (filters.country  && c.country  !== filters.country)  return false;
+    if (filters.industry && c.industry !== filters.industry) return false;
+    if (filters.search   && !c.name.toLowerCase().includes(filters.search.toLowerCase())) return false;
+    return true;
+  });
+
   const headers = ["Empresa", "País · Industria", "Health Score", "Última op.", "Financiado 30d", "Utilización", "Ops", "Estado"];
 
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-      <thead>
-        <tr style={{ borderBottom: "1px solid #E0E0EE", background: "#F8F8FC" }}>
-          {headers.map(h => (
-            <th key={h} style={{
-              padding: "0.875rem 1.25rem", textAlign: "left",
-              fontSize: "0.7rem", textTransform: "uppercase",
-              letterSpacing: "0.08em", color: "#8888AA", fontWeight: 600,
-            }}>
-              {h}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {companies.map((c, i) => {
-          const lastOp = daysSince(c.last_operation_date);
-          const sc = statusConfig[c.status] || statusConfig.active;
-          return (
-            <tr
-              key={c.id}
-              onClick={() => router.push(`/company/${c.id}`)}
-              style={{
-                borderBottom: i < companies.length - 1 ? "1px solid #F0F0F8" : "none",
-                cursor: "pointer", transition: "background 0.15s",
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = "#F8F8FC")}
-              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-            >
-              <td style={{ padding: "1rem 1.25rem" }}>
-                <span style={{ fontWeight: 600, color: "#0D0D2B", fontSize: "0.9rem" }}>
-                  {c.name}
-                </span>
-              </td>
-              <td style={{ padding: "1rem 1.25rem", color: "#8888AA", fontSize: "0.8rem" }}>
-                {c.country} · {c.industry}
-              </td>
-              <td style={{ padding: "1rem 1.25rem" }}>
-                {c.health_score
-                  ? <ScoreBadge score={c.health_score.score} risk={c.health_score.churn_risk} />
-                  : <span style={{ color: "#C0C0D8", fontSize: "0.75rem" }}>— sin score</span>
-                }
-              </td>
-              <td style={{ padding: "1rem 1.25rem", fontSize: "0.8rem",
-                color: lastOp.urgent ? "#EF4444" : "#8888AA" }}>
-                {lastOp.text}
-              </td>
-              <td style={{ padding: "1rem 1.25rem", fontSize: "0.875rem",
-                fontWeight: 600, color: "#0D0D2B" }}>
-                {formatAmount(c.total_financed_30d)}
-              </td>
-              <td style={{ padding: "1rem 1.25rem" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <div style={{
-                    width: 48, height: 4, background: "#F0F0F8",
-                    borderRadius: 2, overflow: "hidden", flexShrink: 0,
-                  }}>
-                    <div style={{
-                      height: "100%",
-                      width: `${Math.min((c.credit_utilization_rate || 0) * 100, 100)}%`,
-                      background: (c.credit_utilization_rate || 0) > 0.8 ? "#EF4444"
-                        : (c.credit_utilization_rate || 0) > 0.5 ? "#F59E0B"
-                        : "#5B4EE8",
-                      borderRadius: 2,
-                    }} />
-                  </div>
-                  <span style={{ fontSize: "0.75rem", color: "#4A4A6A", fontWeight: 500 }}>
-                    {((c.credit_utilization_rate || 0) * 100).toFixed(0)}%
-                  </span>
-                </div>
-              </td>
-              <td style={{ padding: "1rem 1.25rem", fontSize: "0.8rem", color: "#8888AA" }}>
-                {c.operation_count}
-              </td>
-              <td style={{ padding: "1rem 1.25rem" }}>
-                <span style={{
-                  padding: "0.2rem 0.65rem", borderRadius: "9999px",
-                  fontSize: "0.7rem", fontWeight: 700,
-                  textTransform: "uppercase", letterSpacing: "0.06em",
-                  background: sc.bg, color: sc.color,
-                }}>
-                  {sc.label}
-                </span>
+    <>
+      <CompanyFilters
+        companies={companies}
+        filters={filters}
+        setFilters={setFilters}
+        filteredCount={filtered.length}
+      />
+
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid #E0E0EE", background: "#F8F8FC" }}>
+            {headers.map(h => (
+              <th key={h} style={{
+                padding: "0.875rem 1.25rem", textAlign: "left",
+                fontSize: "0.7rem", textTransform: "uppercase",
+                letterSpacing: "0.08em", color: "#8888AA", fontWeight: 600,
+              }}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.length === 0 ? (
+            <tr>
+              <td colSpan={8} style={{
+                padding: "2rem", textAlign: "center",
+                fontSize: "0.875rem", color: "#C0C0D8",
+              }}>
+                No hay empresas que coincidan con los filtros.
               </td>
             </tr>
-          );
-        })}
-      </tbody>
-    </table>
+          ) : (
+            filtered.map((c, i) => {
+              const lastOp = daysSince(c.last_operation_date);
+              const sc = statusConfig[c.status] || statusConfig.active;
+              return (
+                <tr
+                  key={c.id}
+                  onClick={() => router.push(`/company/${c.id}`)}
+                  style={{
+                    borderBottom: i < filtered.length - 1 ? "1px solid #F0F0F8" : "none",
+                    cursor: "pointer", transition: "background 0.15s",
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "#F8F8FC")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                >
+                  <td style={{ padding: "1rem 1.25rem" }}>
+                    <span style={{ fontWeight: 600, color: "#0D0D2B", fontSize: "0.9rem" }}>
+                      {c.name}
+                    </span>
+                  </td>
+                  <td style={{ padding: "1rem 1.25rem", color: "#8888AA", fontSize: "0.8rem" }}>
+                    {c.country} · {c.industry}
+                  </td>
+                  <td style={{ padding: "1rem 1.25rem" }}>
+                    {c.health_score
+                      ? <ScoreBadge score={c.health_score.score} risk={c.health_score.churn_risk} />
+                      : <span style={{ color: "#C0C0D8", fontSize: "0.75rem" }}>— sin score</span>
+                    }
+                  </td>
+                  <td style={{ padding: "1rem 1.25rem", fontSize: "0.8rem",
+                    color: lastOp.urgent ? "#EF4444" : "#8888AA" }}>
+                    {lastOp.text}
+                  </td>
+                  <td style={{ padding: "1rem 1.25rem", fontSize: "0.875rem",
+                    fontWeight: 600, color: "#0D0D2B" }}>
+                    {formatAmount(c.total_financed_30d)}
+                  </td>
+                  <td style={{ padding: "1rem 1.25rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <div style={{
+                        width: 48, height: 4, background: "#F0F0F8",
+                        borderRadius: 2, overflow: "hidden", flexShrink: 0,
+                      }}>
+                        <div style={{
+                          height: "100%",
+                          width: `${Math.min((c.credit_utilization_rate || 0) * 100, 100)}%`,
+                          background: (c.credit_utilization_rate || 0) > 0.8 ? "#EF4444"
+                            : (c.credit_utilization_rate || 0) > 0.5 ? "#F59E0B"
+                            : "#5B4EE8",
+                          borderRadius: 2,
+                        }} />
+                      </div>
+                      <span style={{ fontSize: "0.75rem", color: "#4A4A6A", fontWeight: 500 }}>
+                        {((c.credit_utilization_rate || 0) * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  </td>
+                  <td style={{ padding: "1rem 1.25rem", fontSize: "0.8rem", color: "#8888AA" }}>
+                    {c.operation_count}
+                  </td>
+                  <td style={{ padding: "1rem 1.25rem" }}>
+                    <span style={{
+                      padding: "0.2rem 0.65rem", borderRadius: "9999px",
+                      fontSize: "0.7rem", fontWeight: 700,
+                      textTransform: "uppercase", letterSpacing: "0.06em",
+                      background: sc.bg, color: sc.color,
+                    }}>
+                      {sc.label}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </>
   );
 }
