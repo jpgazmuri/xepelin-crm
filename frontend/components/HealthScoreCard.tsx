@@ -35,18 +35,6 @@ export default function HealthScoreCard({ companyId, initialScore }: {
     }
   }
 
-  // async function handleGenerate() {
-  //   setLoading(true);
-  //   try {
-  //     const newScore = await generateHealthScore(companyId);
-  //     setScore(newScore);
-  //   } catch (e) {
-  //     console.error(e);
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // }
-
   const color = score ? churnColors[score.churn_risk] : "#C0C0D8";
 
   return (

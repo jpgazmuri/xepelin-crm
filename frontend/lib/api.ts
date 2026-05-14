@@ -30,6 +30,7 @@ export interface CompanySummary {
   credit_limit: number;
   credit_utilized: number;
   credit_utilization_rate: number;
+  trend_pct: number;
 }
 
 export interface CompanyDetail extends CompanySummary {

@@ -5,6 +5,7 @@ from typing import List
 import json
 import models, schemas
 from database import get_db
+from datetime import date, timedelta
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -26,16 +27,6 @@ def get_companies_by_kam(kam_id: int, db: Session = Depends(get_db)):
         last_op = max((o.operation_date for o in ops), default=None)
         total_30d = sum(o.amount for o in recent_ops)
 
-        # hs_out = None
-        # if c.health_score:
-        #     hs_out = schemas.HealthScoreOut(
-        #         score=c.health_score.score,
-        #         churn_risk=c.health_score.churn_risk,
-        #         summary=c.health_score.summary,
-        #         recommended_actions=json.loads(c.health_score.recommended_actions or "[]"),
-        #         generated_at=c.health_score.generated_at
-        #     )
-
         hs_out = None
         if c.health_score:
             hs_out = schemas.HealthScoreOut(
@@ -47,13 +38,6 @@ def get_companies_by_kam(kam_id: int, db: Session = Depends(get_db)):
                 data_gaps=json.loads(c.health_score.data_gaps) if c.health_score.data_gaps else [],
                 generated_at=c.health_score.generated_at
             )
-        
-        # credit_utilized = sum(
-        #     o.amount for o in ops
-        #     if o.status in ["completed", "pending"]
-        #     and (date.today() - o.operation_date).days <= 90
-        # )
-        # utilization_rate = round(credit_utilized / c.credit_limit, 3) if c.credit_limit else 0.0
 
         # Operaciones vigentes = completadas cuyo due_date aún no ha pasado
         credit_utilized = sum(
@@ -62,6 +46,23 @@ def get_companies_by_kam(kam_id: int, db: Session = Depends(get_db)):
             and o.due_date >= date.today()
         )
         utilization_rate = round(credit_utilized / c.credit_limit, 3) if c.credit_limit > 0 else 0.0
+
+        # Dentro del loop por empresa, después de calcular total_30d:
+        cutoff_60d = date.today() - timedelta(days=60)
+
+        recent_ops_prev = [
+            o for o in ops
+            if o.operation_date >= cutoff_60d and o.operation_date < cutoff_30d
+        ]
+        total_prev_30d = sum(o.amount for o in recent_ops_prev)
+
+        # Tendencia: % de cambio vs mes anterior
+        if total_prev_30d > 0:
+            trend = round((total_30d - total_prev_30d) / total_prev_30d * 100, 1)
+        elif total_30d > 0:
+            trend = 100.0  # nuevo cliente activo
+        else:
+            trend = 0.0
 
         result.append(schemas.CompanySummary(
             id=c.id,
@@ -76,6 +77,7 @@ def get_companies_by_kam(kam_id: int, db: Session = Depends(get_db)):
             credit_limit=c.credit_limit or 0.0,
             credit_utilized=credit_utilized,
             credit_utilization_rate=utilization_rate,
+            trend_pct=trend,
         ))
 
     result.sort(key=lambda x: (
@@ -96,16 +98,6 @@ def get_company_detail(company_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
 
     import json
-    
-    # hs_out = None
-    # if company.health_score:
-    #     hs_out = schemas.HealthScoreOut(
-    #         score=company.health_score.score,
-    #         churn_risk=company.health_score.churn_risk,
-    #         summary=company.health_score.summary,
-    #         recommended_actions=json.loads(company.health_score.recommended_actions or "[]"),
-    #         generated_at=company.health_score.generated_at
-    #     )
     
     hs_out = None
     if company.health_score:
@@ -140,13 +132,10 @@ def get_company_detail(company_id: int, db: Session = Depends(get_db)):
         for i in sorted(company.interactions, key=lambda x: x.interaction_date, reverse=True)
     ]
 
+    cutoff_30d = date.today() - timedelta(days=30)
+    cutoff_60d = date.today() - timedelta(days=60)
+    
     ops = company.operations
-    # credit_utilized = sum(
-    #     o.amount for o in ops
-    #     if o.status in ["completed", "pending"]
-    #     and (date.today() - o.operation_date).days <= 90
-    # )
-    # utilization_rate = round(credit_utilized / company.credit_limit, 3) if company.credit_limit else 0.0
 
     # Operaciones vigentes = completadas cuyo due_date aún no ha pasado
     credit_utilized = sum(
@@ -156,6 +145,17 @@ def get_company_detail(company_id: int, db: Session = Depends(get_db)):
     )
     utilization_rate = round(credit_utilized / company.credit_limit, 3) if company.credit_limit > 0 else 0.0
 
+    recent_ops      = [o for o in ops if o.operation_date >= cutoff_30d]
+    recent_ops_prev = [o for o in ops if o.operation_date >= cutoff_60d and o.operation_date < cutoff_30d]
+    total_30d      = sum(o.amount for o in recent_ops)
+    total_prev_30d = sum(o.amount for o in recent_ops_prev)
+
+    if total_prev_30d > 0:
+        trend = round((total_30d - total_prev_30d) / total_prev_30d * 100, 1)
+    elif total_30d > 0:
+        trend = 100.0
+    else:
+        trend = 0.0
 
     return schemas.CompanyDetail(
         id=company.id,
@@ -171,6 +171,7 @@ def get_company_detail(company_id: int, db: Session = Depends(get_db)):
         credit_limit=company.credit_limit or 0.0,
         credit_utilized=credit_utilized,
         credit_utilization_rate=utilization_rate,
+        trend_pct=trend,
     )
 
 

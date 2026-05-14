@@ -35,14 +35,9 @@ def build_company_prompt(company: models.Company) -> str:
     last_op       = max((o.operation_date for o in ops), default=None)
     days_inactive = (datetime.now().date() - last_op).days if last_op else 999  
     products_used = list(set(o.product_type for o in ops))
-    # Agrega estas líneas junto a los otros cálculos al inicio de la función
+
     credit_limit = company.credit_limit or 0
-    # credit_utilized = sum(
-    #     o.amount for o in ops
-    #     if o.status in ["completed", "pending"]
-    #     and (datetime.now().date() - o.operation_date).days <= 90
-    # )
-    # utilization_rate = round(credit_utilized / credit_limit, 3) if credit_limit > 0 else 0.0
+
     # Operaciones vigentes = completadas cuyo due_date aún no ha pasado
     credit_utilized = sum(
         o.amount for o in ops
@@ -50,11 +45,6 @@ def build_company_prompt(company: models.Company) -> str:
         and o.due_date >= date.today()
     )
     utilization_rate = round(credit_utilized / credit_limit, 3) if credit_limit > 0 else 0.0
-
-    # interaction_summaries = [
-    #     f"- [{i.channel.upper()}] {i.interaction_date}: {i.summary}"
-    #     for i in sorted(interactions, key=lambda x: x.interaction_date, reverse=True)[:5]
-    # ]
 
     interactions_sorted = sorted(interactions, key=lambda x: x.interaction_date, reverse=True)
 
@@ -117,38 +107,6 @@ Responde con este JSON exacto:
   "data_gaps": ["<campo que faltó para mejor análisis>"]
 }}"""
 
-#     return f"""Evalúa la salud del siguiente cliente de Xepelin:
-
-# DATOS DE LA EMPRESA:
-# - Nombre: {company.name}
-# - Industria: {company.industry}
-# - País: {company.country}
-# - Estado actual: {company.status}
-# - Cliente desde: {company.onboarding_date}
-
-# COMPORTAMIENTO FINANCIERO:
-# - Total operaciones históricas: {total_ops}
-# - Operaciones en mora: {overdue_ops} ({round(overdue_ops/total_ops*100) if total_ops > 0 else 0}%)
-# - Volumen total financiado: ${total_amount:,.0f}
-# - Volumen financiado últimos 30 días: ${total_30d:,.0f}
-# - Días sin operar: {days_inactive}
-# - Productos utilizados: {', '.join(products_used) if products_used else 'ninguno'}
-# - Línea de crédito aprobada: ${credit_limit:,.0f}
-# - Línea utilizada (últimos 90d): ${credit_utilized:,.0f}
-# - Tasa de utilización: {utilization_rate:.1%}
-
-# INTERACCIONES RECIENTES:
-# {chr(10).join(interaction_summaries) if interaction_summaries else '- Sin interacciones registradas'}
-
-# Responde con este JSON exacto:
-# {{
-#   "health_score": <número entero 0-100>,
-#   "churn_risk": "<low|medium|high>",
-#   "summary": "<2-3 oraciones explicando el estado del cliente>",
-#   "recommended_actions": ["<acción 1>", "<acción 2>", "<acción 3>"],
-#   "confidence": "<low|medium|high>",
-#   "data_gaps": ["<campo que faltó para mejor análisis>"]
-# }}"""
 
 def parse_llm_response(text: str) -> dict:
     text = text.strip()
@@ -190,21 +148,6 @@ def generate_health_score(company_id: int, db: Session = Depends(get_db)):
         models.HealthScore.company_id == company_id
     ).first()
 
-    # if existing:
-    #     existing.score               = data["health_score"]
-    #     existing.churn_risk          = data["churn_risk"]
-    #     existing.summary             = data["summary"]
-    #     existing.recommended_actions = json.dumps(data["recommended_actions"])
-    #     existing.generated_at        = datetime.utcnow()
-    # else:
-    #     db.add(models.HealthScore(
-    #         company_id=company_id,
-    #         score=data["health_score"],
-    #         churn_risk=data["churn_risk"],
-    #         summary=data["summary"],
-    #         recommended_actions=json.dumps(data["recommended_actions"]),
-    #         generated_at=datetime.utcnow()
-    #     ))
     if existing:
         existing.score               = data["health_score"]
         existing.churn_risk          = data["churn_risk"]
@@ -231,13 +174,6 @@ def generate_health_score(company_id: int, db: Session = Depends(get_db)):
         models.HealthScore.company_id == company_id
     ).first()
 
-    # return schemas.HealthScoreOut(
-    #     score=saved.score,
-    #     churn_risk=saved.churn_risk,
-    #     summary=saved.summary,
-    #     recommended_actions=json.loads(saved.recommended_actions),
-    #     generated_at=saved.generated_at
-    # )
     return schemas.HealthScoreOut(
         score=saved.score,
         churn_risk=saved.churn_risk,

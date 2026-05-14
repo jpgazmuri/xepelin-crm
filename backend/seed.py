@@ -78,14 +78,6 @@ companies_data = [
 companies = []
 for cd in companies_data:
     kam = kams_by_email[cd["kam"]]
-    # c = models.Company(
-    #     name=cd["name"],
-    #     industry=cd["industry"],
-    #     country=cd["country"],
-    #     assigned_kam_id=kam.id,
-    #     onboarding_date=date.today() - timedelta(days=random.randint(60, 900)),
-    #     status=cd["status"],
-    # )
 
     # Dentro del for cd in companies_data, al crear el Company:
     if cd["status"] == "active" and cd["n"] > 10:

@@ -4,189 +4,166 @@
 
 ## 1. El prompt — decisiones de diseño
 
-### Estructura elegida
+### Arquitectura: dos capas
 
-Se usó un prompt con dos capas separadas:
+**System prompt** — rol y restricciones absolutas:
+- Analista de riesgo de fintech B2B latinoamericana
+- "NUNCA inventes datos que no estén en el input"
+- Si faltan datos, declararlos explícitamente
+- Output: JSON puro sin markdown ni backticks
 
-**System prompt** — define el rol y las restricciones absolutas:
-- Rol específico: analista de riesgo de fintech B2B latinoamericana
-- Restricción explícita: "NUNCA inventes datos que no estén en el input"
-- Formato: JSON puro, sin markdown ni backticks
+**User prompt** — datos estructurados en dos secciones:
 
-**User prompt** — datos estructurados de la empresa con template fijo:
-- Datos de comportamiento financiero (ops, mora, volumen, inactividad)
-- Interacciones recientes (últimas 5, con canal y fecha)
-- Schema JSON exacto que debe retornar
+**Comportamiento financiero:**
+- Total operaciones históricas y tasa de mora
+- Volumen total y volumen últimos 30 días
+- Días sin operar
+- Productos utilizados (factoring, confirming, capital de trabajo)
+- Línea de crédito aprobada, monto utilizado y tasa de utilización
+
+**Señales de interacciones (enriquecidas):**
+- Días desde último contacto
+- Canal más frecuente (WhatsApp / email / llamada)
+- Streak de contactos sin respuesta (señal fuerte de churn)
+- Detalle de las últimas 5 interacciones con canal, fecha y resumen
 
 ### Por qué este diseño
 
-**Separación system/user:** Anthropic recomienda poner las instrucciones de comportamiento en el system prompt y los datos variables en el user prompt. Esto mejora la consistencia del output y reduce alucinaciones.
+**Separación system/user**: las instrucciones de comportamiento van en el system prompt; los datos variables en el user prompt. Mejora consistencia y reduce alucinaciones.
 
-**Datos concretos, no narrativos:** en lugar de enviar un texto libre sobre la empresa, se estructuran los datos en categorías claras (financiero, interacciones). Esto reduce la ambigüedad y hace el prompt más reproducible.
+**Datos concretos, no narrativos**: en lugar de texto libre, datos estructurados por categoría. Más reproducible y menos ambiguo.
 
-**Schema explícito en el prompt:** pedir el JSON exacto con los campos y tipos esperados fuerza al modelo a seguir la estructura. Combinado con `parse_llm_response()` que limpia posibles backticks, el sistema es tolerante a pequeñas desviaciones del modelo.
+**Schema explícito con `confidence` y `data_gaps`**: el modelo declara qué tan seguro está de su evaluación y qué datos le faltaron. Esto es lo que diferencia un uso riguroso de LLMs de uno naïve.
 
-**Campos `confidence` y `data_gaps`:** el modelo declara explícitamente qué tan seguro está de su evaluación y qué datos le faltaron. Esto es lo que diferencia un uso riguroso de LLMs de uno naïve — el sistema sabe cuándo no sabe.
+**Línea de crédito como input**: la tasa de utilización (crédito usado / crédito aprobado) es uno de los indicadores más relevantes en lending. Una empresa con línea alta y utilización baja es oportunidad de expansión; con utilización muy alta puede estar sobre-endeudada.
+
+**Señales de interacción enriquecidas**: no solo el texto de las últimas interacciones, sino métricas derivadas: días sin contacto, canal preferido, y si hay un patrón de no-respuesta. Un cliente que no contesta 3 veces seguidas es una señal clara que el modelo puede ponderar.
 
 ---
 
-## 2. Evaluación de calidad en producción
+## 2. Output estructurado y validado
+
+```json
+{
+  "health_score": 42,
+  "churn_risk": "high",
+  "summary": "Constructora Andes presenta señales mixtas...",
+  "recommended_actions": [
+    "Contacto directo para entender razones de inactividad",
+    "Revisar operaciones en mora",
+    "Validar si el interés en confirming se materializa"
+  ],
+  "confidence": "medium",
+  "data_gaps": [
+    "Estados financieros para contexto de solvencia",
+    "Antigüedad de las operaciones en mora"
+  ]
+}
+```
+
+**Visibilidad en la UI**:
+- `health_score` + `churn_risk`: progress circle con color semántico en listado y detalle
+- `summary` + `recommended_actions`: card expandida en vista de detalle
+- `confidence`: badge coloreado (verde/amarillo/rojo) visible debajo de las acciones
+- `data_gaps`: badge con contador y tooltip al hacer hover — el KAM sabe qué información adicional mejoraría el análisis
+
+---
+
+## 3. Evaluación de calidad en producción
 
 ### Etapa 1 — Golden set inicial
-
-Antes de lanzar a producción, construir un conjunto de 20-30 empresas evaluadas manualmente por KAMs senior. Para cada empresa:
-- KAM asigna health_score (0-100) y churn_risk
+20-30 empresas evaluadas manualmente por KAMs senior. Para cada empresa:
+- KAM asigna `health_score` (0-100) y `churn_risk`
 - KAM escribe las 3 acciones que tomaría
 
-Comparar la salida del LLM contra este benchmark usando:
-- MAE (Mean Absolute Error) para el score numérico
-- Accuracy para el churn_risk categórico
-- Revisión cualitativa de las acciones recomendadas
-
-**Umbral mínimo para producción:** MAE < 15 puntos, accuracy churn_risk > 70%.
+Métricas de comparación:
+- MAE (Mean Absolute Error) para el score numérico → umbral: < 15 puntos
+- Accuracy para `churn_risk` categórico → umbral: > 70%
+- Revisión cualitativa de acciones recomendadas
 
 ### Etapa 2 — Feedback loop con KAMs
-
-En la UI, agregar un mecanismo de feedback por cada health score generado:
-
-```
-¿Fue útil este análisis?  👍  👎
-```
-
-Los thumbs down disparan una revisión manual que alimenta el golden set. Con 50+ evaluaciones acumuladas, el golden set se vuelve estadísticamente significativo.
+Botón de thumbs up/down en cada health score generado. Los thumbs down disparan revisión manual que alimenta el golden set. Con 50+ evaluaciones, el golden set se vuelve estadísticamente significativo.
 
 ### Etapa 3 — LLM-as-judge
-
-Para escalar la evaluación sin requerir revisión humana en cada caso, usar un segundo LLM (Claude Opus) como juez:
-
+Para escalar la evaluación sin revisión humana:
 ```
 Dado el perfil de esta empresa y el health score generado,
 evalúa si el análisis es: coherente / incoherente / alucinado.
-Justifica en una oración.
 ```
-
-Esto permite evaluar miles de outputs automáticamente y detectar degradación del modelo en el tiempo.
+Permite evaluar miles de outputs automáticamente y detectar degradación.
 
 ### Etapa 4 — Proxy metrics
-
-La mejor validación es el mundo real: si las empresas con `churn_risk: high` efectivamente churnan más que las de `low`, el modelo tiene poder predictivo real. Medir mensualmente:
-
+Si las empresas con `churn_risk: high` churnan más que las de `low`, el modelo tiene poder predictivo real. Medir mensualmente:
 - Churn rate por segmento de churn_risk
-- Tasa de conversión de acciones recomendadas ejecutadas por KAMs
+- Tasa de adopción de acciones recomendadas por KAMs
 
 ---
 
-## 3. Costo y latencia a escala
+## 4. Costo y latencia a escala
 
-### Setup actual
-
-- **Modelo:** Claude Haiku 3.5
-- **Tokens por empresa:** ~800 input + ~300 output = ~1.100 tokens
-- **Modo:** batch (generate-all por KAM)
+### Configuración actual
+- Modelo: Claude Haiku 3.5
+- Tokens por empresa: ~1.000 input + ~350 output = ~1.350 tokens (prompt enriquecido)
+- Modo: batch por KAM o individual por empresa
 
 ### Estimación a 10.000 empresas/mes
 
-| Concepto | Cálculo | Resultado |
+| Concepto | Cálculo | Total |
 |---|---|---|
-| Input tokens | 10.000 × 800 | 8M tokens |
-| Output tokens | 10.000 × 300 | 3M tokens |
-| Costo input (Haiku) | 8M × $0.80/1M | $6.40 |
-| Costo output (Haiku) | 3M × $4.00/1M | $12.00 |
-| **Total mensual** | | **~$18.40/mes** |
+| Input tokens | 10.000 × 1.000 | 10M tokens |
+| Output tokens | 10.000 × 350 | 3.5M tokens |
+| Costo input (Haiku) | 10M × $0.80/1M | $8.00 |
+| Costo output (Haiku) | 3.5M × $4.00/1M | $14.00 |
+| **Total mensual** | | **~$22/mes** |
 
-**Latencia por empresa:** ~1-2 segundos con Haiku.
-**Latencia para 10.000 empresas en paralelo (10 workers):** ~20-30 minutos.
+**Latencia**: ~1-2 segundos por empresa. Para 10.000 empresas con 10 workers en paralelo: ~20-30 minutos en batch nocturno.
 
 ### Optimizaciones para producción
 
-**Batch processing nocturno:** no tiene sentido regenerar scores en tiempo real para todas las empresas. Un job nocturno que regenera solo las empresas con actividad reciente (nuevas operaciones, interacciones) reduce el costo ~60%.
+**Batch processing nocturno**: regenerar solo empresas con actividad reciente (nuevas operaciones o interacciones). Reduce costo ~60%.
 
-**Caché por empresa:** si los datos de una empresa no cambiaron desde la última generación, reutilizar el score existente. Invalidar solo cuando hay nueva operación o interacción.
+**Caché por empresa**: si los datos no cambiaron desde la última generación, reutilizar el score. Invalidar solo al detectar nueva operación o interacción.
 
-**Priorización:** regenerar primero las empresas `at_risk` y las que tienen operaciones recientes. Las empresas `churned` se regeneran con menor frecuencia.
+**Priorización**: regenerar primero las empresas `at_risk` y las con operaciones recientes. Las `churned` con menor frecuencia.
 
 ---
 
-## 4. Manejo de errores
+## 5. Manejo de errores
 
 ### Falta de datos
-
-Si una empresa tiene pocas operaciones o interacciones, el modelo lo declara explícitamente en `data_gaps`. En el sistema:
-
-```python
-if len(company.operations) < 3:
-    # Agregar advertencia al prompt
-    prompt += "\nNOTA: Esta empresa tiene datos limitados. 
-               Sé explícito sobre la incertidumbre en tu evaluación."
-```
-
-El frontend muestra el badge de `confidence: low` cuando corresponde.
+Si una empresa tiene pocas operaciones, el modelo lo declara en `data_gaps` y el campo `confidence` refleja la incertidumbre. En el UI, el badge de "confianza baja" avisa al KAM que tome el score con cautela.
 
 ### Fallas del LLM
-
-El sistema maneja tres tipos de fallo:
-
-1. **Timeout / error de red:** retry automático hasta 3 veces con backoff exponencial
-2. **JSON inválido:** `parse_llm_response()` limpia backticks y formatos comunes; si falla, se registra el error y se mantiene el score anterior
-3. **Campos faltantes:** validación explícita de campos requeridos antes de guardar
-
-### Outputs inválidos
-
-Si el score retornado está fuera de rango (< 0 o > 100), o el churn_risk no es low/medium/high:
-
-```python
-data["health_score"] = max(0, min(100, data["health_score"]))
-if data["churn_risk"] not in ["low", "medium", "high"]:
-    data["churn_risk"] = "medium"  # fallback conservador
-```
+Tres niveles de manejo:
+1. **Timeout / error de red**: el botón muestra mensaje de error claro en la UI; el score anterior se mantiene
+2. **JSON inválido**: `parse_llm_response()` limpia backticks y formatos comunes antes de parsear
+3. **Campos faltantes o fuera de rango**: validación explícita antes de guardar; `health_score` se clampea a [0, 100]; `churn_risk` tiene fallback a "medium"
 
 ---
 
-## 5. Riesgos y mitigaciones
+## 6. Riesgos y mitigaciones
 
 ### Alucinaciones
+**Riesgo**: el modelo inventa datos financieros o interacciones.
+**Mitigación**: restricción explícita en system prompt + el campo `data_gaps` obliga a declarar qué no sabe + LLM-as-judge detecta incoherencias.
 
-**Riesgo:** el modelo inventa datos financieros o inventa interacciones que no ocurrieron.
-
-**Mitigación:**
-- Instrucción explícita en system prompt: "NUNCA inventes datos"
-- El prompt solo incluye datos verificados de la DB
-- El campo `data_gaps` obliga al modelo a declarar qué no sabe
-- LLM-as-judge detecta outputs incoherentes con los datos de entrada
-
-### Sesgos del modelo
-
-**Riesgo:** el modelo puede tener sesgos hacia ciertos sectores o países (ej: calificar peor a empresas de construcción por asociación con riesgo).
-
-**Mitigación:**
-- Monitorear distribución de scores por sector y país
-- Si hay diferencias estadísticamente significativas no justificadas por datos, ajustar el prompt
-- Incluir en el golden set empresas de todos los sectores y países
+### Sesgos por sector o país
+**Riesgo**: el modelo puede calificar peor a ciertos sectores sin justificación en datos.
+**Mitigación**: monitorear distribución de scores por sector/país. Si hay diferencias no justificadas, ajustar el prompt.
 
 ### Decisiones incorrectas de negocio
-
-**Riesgo:** un KAM toma una decisión basada en un health score incorrecto (ej: no contactar a una empresa que en realidad está en riesgo).
-
-**Mitigación:**
-- El sistema muestra siempre el `confidence` del score
-- Los KAMs son el último filtro — el score es una señal, no una orden
-- Feedback loop captura cuando el KAM discrepa con el score
-- Los scores no bloquean acciones: siempre se puede ver el detalle completo de la empresa
+**Riesgo**: KAM toma decisión basada en score incorrecto.
+**Mitigación**: el score es una señal, no una orden. El badge de `confidence` informa la certeza. Los KAMs siempre tienen acceso al detalle completo. El feedback loop captura discrepancias.
 
 ### Dependencia del proveedor
-
-**Riesgo:** si Anthropic cambia precios o depreca el modelo, el sistema se ve afectado.
-
-**Mitigación:**
-- El prompt está diseñado para ser agnóstico al modelo
-- La capa de abstracción en `health.py` permite cambiar de modelo en un lugar
-- Alternativas evaluadas: Gemini Flash (gratis), Llama 3 vía Groq (gratis)
+**Riesgo**: cambios de precio o deprecación de modelo en Anthropic.
+**Mitigación**: el prompt es agnóstico al modelo. La capa de abstracción en `health.py` permite cambiar de proveedor en un lugar. Alternativas evaluadas: Gemini Flash (gratuito), Llama 3 vía Groq (gratuito).
 
 ---
 
-## Resumen ejecutivo para la presentación
+## Resumen ejecutivo
 
-> El sistema genera health scores usando Claude Haiku 3.5, con un costo estimado de ~$18/mes para 10.000 empresas. El prompt está diseñado para ser conservador — el modelo declara explícitamente su confianza y los datos que le faltaron. La calidad se evalúa con un golden set validado por KAMs, un feedback loop en la UI y LLM-as-judge para escala. Los principales riesgos (alucinaciones, sesgos, dependencia del proveedor) tienen mitigaciones concretas implementadas o planificadas.
+El sistema genera health scores usando Claude Haiku 3.5, con un costo estimado de ~$22/mes para 10.000 empresas. El prompt está enriquecido con señales financieras (línea de crédito, utilización) y de interacciones (días sin contacto, streak de no-respuesta). El modelo declara explícitamente su confianza y los datos que le faltaron. La calidad se evalúa con golden set, feedback loop en la UI y LLM-as-judge para escala. Los campos `confidence` y `data_gaps` son visibles en la interfaz para que el KAM tome decisiones informadas.
 
 ---
 
